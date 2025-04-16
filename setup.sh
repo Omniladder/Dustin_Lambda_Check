@@ -3,13 +3,20 @@
 
 cd CLI
 
+#Identifies if user is root if not tries to see they have sudo
+if [ "$EUID" -ne 0 ]; then
+  SUDO="sudo"
+else
+  SUDO=""
+fi
+
 #curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
 
-sudo apt-get update
-sudo apt-get install cabal-install
+$SUDO apt-get update
+$SUDO apt-get install cabal-install
 
 
-sudo apt install python3.12
+$SUDO apt install python3.12
 
 pip install -r ../requirements.txt
 
