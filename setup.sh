@@ -16,7 +16,7 @@ $SUDO apt-get update
 $SUDO apt-get install cabal-install
 
 
-$SUDO apt install -y python3.12
+$SUDO apt install -y python3 python3-pip
 
 pip install -r ../requirements.txt
 
