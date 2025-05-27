@@ -1,15 +1,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
+
 import qualified Data.Text.IO as TIO
 import qualified Data.Text as T
+
 import Network.HTTP.Conduit
+
 import qualified Data.Text.Encoding as TE
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import Data.List
+
 import System.Console.ANSI
 import System.Directory (getDirectoryContents)
 import System.FilePath ( takeExtension)
+import System.Exit (exitSuccess, exitFailure)
 
 listCabalFiles :: FilePath -> IO [FilePath]
 listCabalFiles dir = do
@@ -51,7 +56,7 @@ getHeads input = map head input
 removeVersions :: T.Text -> T.Text
 removeVersions input = head (T.splitOn "^" (head (T.splitOn "=" (head (T.splitOn ">" (head (T.splitOn "<" input)))))))
 
-cveAnalysis :: FilePath -> IO()
+cveAnalysis :: FilePath -> IO Bool
 cveAnalysis filepath = do
         fileContent <- TIO.readFile filepath
         putStrLn ("\n Analyzing " ++ filepath) 
@@ -92,20 +97,25 @@ cveAnalysis filepath = do
 
         let pairs = zip no_verisons trimmed_responses
 
-        mapM_ output_vulnerabilities pairs
+        has_vul <- mapM output_vulnerabilities pairs
+        let final_results = or has_vul
+
+        return final_results
 
 
 
 
-output_vulnerabilities :: (T.Text, T.Text) -> IO()
+output_vulnerabilities :: (T.Text, T.Text) -> IO Bool
 output_vulnerabilities input = do
     if T.isInfixOf "No vulnerabilities found" ( (snd input))
-        then
-        setSGR [SetColor Foreground Dull Green] >>  
-        putStrLn (" -- "++T.unpack (fst input) ++ " -- "++ (T.unpack (snd input)))
-        else
-        setSGR [SetColor Foreground Dull Red] >> 
-        putStrLn (" -- "++T.unpack (fst input) ++ " -- "++ (T.unpack (snd input)))
+        then do
+        setSGR [SetColor Foreground Dull Green]
+        putStrLn (" -- " ++ T.unpack (fst input) ++ " -- " ++ (T.unpack (snd input)))
+        return False
+        else do
+        setSGR [SetColor Foreground Dull Red]
+        putStrLn (" -- " ++ T.unpack (fst input) ++ " -- " ++ (T.unpack (snd input)))
+        return True
 
 
 
@@ -127,70 +137,109 @@ printLogo x= do
     putStrLn "\x1b[49m"
     putStrLn ""
 
-weaknessAnalysis :: FilePath -> IO()
+weaknessAnalysis :: FilePath -> IO Bool
 weaknessAnalysis filePath =do
     fileContent <- TIO.readFile filePath
-    setSGR [SetColor Foreground Dull White] >> putStrLn ("\n Analyzing " ++ filePath) 
+    setSGR [SetColor Foreground Dull White] 
+    putStrLn ("\n Analyzing " ++ filePath) 
     let lines = T.splitOn "\n" fileContent
     let tuples = zip lines [1,2..]
-    mapM_ weaknessOutput tuples
+    output <- mapM weaknessOutput tuples
+    return (or output)
 
-weaknessOutput :: (T.Text,Int)-> IO()
+weaknessOutput :: (T.Text,Int)-> IO Bool
 weaknessOutput input = do
-    if T.isInfixOf "import Unsafe.Coerce" (fst input)
-        then 
-            setSGR [SetColor Foreground Dull Red] >>
+    c1 <- if T.isInfixOf "import Unsafe.Coerce" (fst input)
+        then do
+            setSGR [SetColor Foreground Dull Red]
             putStrLn ("\n-- Utilization of unsafeCoerce in type change operations can result in segmenation faults and data corruption. Error on line " ++ show (snd input))
-        else 
-            setSGR [SetColor Foreground Dull Green] >>
-            -- putStrLn ("-- No risk of unsafeCoerce segmentaion faults! Line " ++ show (snd input))
+            let c1 = True
+            return c1
+        else do
+            setSGR [SetColor Foreground Dull Green]
             putStr " * "
-    if T.isInfixOf "peek" (fst input) && T.isInfixOf "import Foreign.Ptr" (fst input)
-        then 
-            setSGR [SetColor Foreground Dull Red] >>
+            let c1 = False
+            return c1
+
+
+    c2 <- if T.isInfixOf "peek" (fst input) && T.isInfixOf "import Foreign.Ptr" (fst input)
+        then do
+            setSGR [SetColor Foreground Dull Red]
             putStrLn ("\n-- Using peek on a foreign pointer can cause a segmentation fault, if null pointer segmentation fault is guaranteed. Error on line "++ show (snd input)) 
-        else 
-            setSGR [SetColor Foreground Dull Green] >>            
-            -- putStrLn ("-- No risk of derefrenceing null pointer with peek! Line "++ show (snd input))
+            let c2 = True
+            return c2
+        else do
+            setSGR [SetColor Foreground Dull Green]
             putStr " * "
-    if T.isInfixOf "IORef" (fst input)
-        then 
-            setSGR [SetColor Foreground Dull Red] >>
+            let c2 = False
+            return c2
+
+    c3 <- if T.isInfixOf "IORef" (fst input)
+        then do
+            setSGR [SetColor Foreground Dull Red]
             putStrLn ("\n-- Program is using mutable state via IORef which are vulnerable to buffer overflow. Error on line "++ show (snd input))
-        else 
-            setSGR [SetColor Foreground Dull Green] >>
-            -- putStrLn ("-- No risk of buffer overflow from IORef! Line "++ show (snd input))
+            let c3 = True
+            return c3
+        else do
+            setSGR [SetColor Foreground Dull Green]
             putStr " * "
-    if T.isInfixOf "foreign import" (fst input)
-        then 
-            setSGR [SetColor Foreground Dull Red] >>
+            let c3 = False
+            return c3
+
+    c4 <- if T.isInfixOf "foreign import" (fst input)
+        then do
+            setSGR [SetColor Foreground Dull Red]
             putStrLn( "\n-- Foreign library import detected, non native libraties are more vulnerable to segmentaion faults and buffer overflows. Error on line "++ show (snd input))
-        else 
-            setSGR [SetColor Foreground Dull Green] >>
-            -- putStrLn ("-- Foreign imports not found! Line "++ show (snd input))
+            let c4 = True
+            return c4
+        else do
+            setSGR [SetColor Foreground Dull Green]
             putStr " * "
-    if T.isInfixOf "IORef" (fst input) && T.isInfixOf "import Control.Concurent" (fst input) && T.isInfixOf "forkIO" (fst input)
-        then 
-            setSGR [SetColor Foreground Dull Red] >>
+            let c4 = False
+            return c4
+
+
+    c5 <- if T.isInfixOf "IORef" (fst input) && T.isInfixOf "import Control.Concurent" (fst input) && T.isInfixOf "forkIO" (fst input)
+        then do
+            setSGR [SetColor Foreground Dull Red]
             putStrLn ("\n-- IORef is Unsafe for threads. Does not use up/down blocks to prevent race conditions. Use MVar instead. Error on line "++ show (snd input))
-        else 
-            setSGR [SetColor Foreground Dull Green] >>
+            let c5 = True
+            return c5
+        else do
+            setSGR [SetColor Foreground Dull Green]
             -- putStrLn ("-- Safe from thread IORef race conditions. Line "++ show (snd input))
             putStr " * "
-    if not(T.isInfixOf "import Control.Cuncurent.STM" (fst input)) && not(T.isInfixOf "atomically" (fst input)) && T.isInfixOf "forkIO" (fst input)
-        then 
-            setSGR [SetColor Foreground Dull Red] >>
+            let c5 = False
+            return c5
+
+    c6 <- if not(T.isInfixOf "import Control.Cuncurent.STM" (fst input)) && not(T.isInfixOf "atomically" (fst input)) && T.isInfixOf "forkIO" (fst input)
+        then do
+            setSGR [SetColor Foreground Dull Red]
             putStrLn ("\n-- Warning. Using forkIO non atomically can lead to race conditions. Error on line "++ show (snd input))
-        else 
-            setSGR [SetColor Foreground Dull Green] >>
+            let c6 = True
+            return c6
+        else do
+            setSGR [SetColor Foreground Dull Green]
             -- putStrLn ("-- Safe from non atomic forkIO race conditions "++ show (snd input))
             putStr " * "
+            let c6 = False
+            return c6
     putStrLn ""
+    
+    return (c1 || c2 || c3 || c4 || c5 || c6)
+
+
 main :: IO ()
 main = do
     printLogo 1
     cabalFiles <- listCabalFiles "."
-    mapM_ cveAnalysis cabalFiles
+    cveResults <- mapM cveAnalysis cabalFiles
     hsFiles <- listHsFiles "."
-    mapM_ weaknessAnalysis hsFiles
+    weaknessResults <- mapM weaknessAnalysis hsFiles
 
+    let hasWeakness = or weaknessResults
+    let hasCVE = or cveResults
+
+    if (hasCVE || hasWeakness)
+        then exitFailure
+        else exitSuccess
