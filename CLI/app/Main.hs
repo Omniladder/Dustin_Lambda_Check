@@ -85,7 +85,7 @@ cveAnalysis filepath = do
 
         let no_verisons = map removeVersions drop_first
 
-        let route = "http://0.0.0.0:8000/search?term=" :: String
+        let route = "https://lambda.dustintobrien.com/search?term=" :: String
 
         let urls= map (\x->route ++ T.unpack (x)) no_verisons
 
