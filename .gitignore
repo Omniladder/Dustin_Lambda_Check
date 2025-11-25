@@ -20,7 +20,6 @@
 *.tar
 *.zip
 *.env
-dockerfile
 
 # Logs and databases #
 ######################

@@ -1,0 +1,15 @@
+FROM haskell:9 AS lambda-check-builder
+
+WORKDIR /app
+
+COPY ./ ./
+
+RUN cabal update && cabal install --installdir=/app
+
+FROM debian:12
+
+COPY --from=lambda-check-builder /app/Lambda-Check /usr/local/bin/Lambda-Check
+
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+
